@@ -31,23 +31,8 @@
         const container = document.getElementById('player-container');
 
         // ─── YouTube ───────────────────────────────────────────────
-        // يستقبل الـ volume من اللعبة عبر SendDuiMessage
         let ytPlayer = null;
-        window.addEventListener('message', function(e) {
-            try {
-                const msg = (typeof e.data === 'string') ? JSON.parse(e.data) : e.data;
-                if (msg.type === 'setVolume' && ytPlayer) {
-                    const vol = Math.round(msg.volume * 100);
-                    if (msg.volume <= 0) {
-                        ytPlayer.mute();
-                        ytPlayer.setVolume(0);
-                    } else {
-                        ytPlayer.unMute();
-                        ytPlayer.setVolume(vol);
-                    }
-                }
-            } catch(_) {}
-        });
+        let videoStarted = false;
 
         function initYouTube() {
             ytPlayer = new YT.Player('player-container', {
@@ -55,7 +40,7 @@
                 playerVars: {
                     autoplay: 1,
                     controls: 0,
-                    mute: 0,        // مو muted — الصوت يجي من هنا
+                    mute: 1,
                     start: startTime,
                     rel: 0,
                     modestbranding: 1,
@@ -65,11 +50,23 @@
                 },
                 events: {
                     onReady(e) {
-                        e.target.setVolume(0); // يبدأ صامت، اللعبة ترفعه
+                        e.target.mute();
+                        e.target.setVolume(0);
                         e.target.playVideo();
                     },
                     onStateChange(e) {
+                        // PLAYING = 1 — لما الفيديو الأصلي يبدأ (بعد الإعلان)
+                        if (e.data === YT.PlayerState.PLAYING && !videoStarted) {
+                            videoStarted = true;
+                            // نخبر الـ client إن الفيديو الأصلي بدأ (بعد الإعلان)
+                            fetch('https://cfx-nui-amh-tv/videoReady', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tvId: parseInt(new URLSearchParams(window.location.search).get('tvId')) || 0 })
+                            }).catch(() => {});
+                        }
                         if (e.data === YT.PlayerState.ENDED) {
+                            videoStarted = false;
                             try { e.target.seekTo(0, true); e.target.playVideo(); } catch (_) {}
                         }
                     },
