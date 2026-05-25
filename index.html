@@ -23,15 +23,6 @@
         const resName   = params.get('res') || 'amh-tv';
         const container = document.getElementById('player-container');
 
-        // نخبر الـ client إن الفيديو الأصلي بدأ (بعد الإعلان)
-        function notifyVideoReady() {
-            fetch(`https://cfx-nui-${resName}/videoReady`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tvId })
-            }).catch(() => {});
-        }
-
         // ─── YouTube ───────────────────────────────────────────────
         let ytPlayer     = null;
         let videoStarted = false;
@@ -40,22 +31,32 @@
             ytPlayer = new YT.Player('player-container', {
                 videoId,
                 playerVars: {
-                    autoplay: 1, controls: 0, mute: 1,
+                    autoplay: 1, controls: 0,
+                    mute: 0,        // بصوت — الإعلان والمقطع يطلعون بصوت
                     start: startTime, rel: 0,
                     modestbranding: 1, iv_load_policy: 3,
                     disablekb: 1, playsinline: 1,
                 },
                 events: {
                     onReady(e) {
-                        e.target.mute();
-                        e.target.setVolume(0);
+                        e.target.setVolume(100);
                         e.target.playVideo();
                     },
                     onStateChange(e) {
-                        // PLAYING بعد الإعلان = الفيديو الأصلي بدأ
                         if (e.data === YT.PlayerState.PLAYING && !videoStarted) {
                             videoStarted = true;
-                            notifyVideoReady();
+
+                            // نخبر الـ client إن الفيديو الأصلي بدأ
+                            fetch(`https://cfx-nui-${resName}/videoReady`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tvId })
+                            }).catch(() => {});
+
+                            // بعد ثانية نكتم الـ DUI — الصوت يجي من xSound
+                            setTimeout(() => {
+                                try { ytPlayer.mute(); ytPlayer.setVolume(0); } catch(_) {}
+                            }, 1000);
                         }
                         if (e.data === YT.PlayerState.ENDED) {
                             videoStarted = false;
