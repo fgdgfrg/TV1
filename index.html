@@ -5,18 +5,9 @@
     <title>TV</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body, html {
-            width: 100%; height: 100%;
-            background: #000; overflow: hidden;
-        }
-        #player-container {
-            width: 100%; height: 100%;
-            position: absolute; top: 0; left: 0;
-        }
-        iframe, video {
-            width: 100%; height: 100%;
-            border: none; object-fit: cover;
-        }
+        body, html { width: 100%; height: 100%; background: #000; overflow: hidden; }
+        #player-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        iframe, video { width: 100%; height: 100%; border: none; object-fit: cover; }
     </style>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="https://player.twitch.tv/js/embed/v1.js"></script>
@@ -28,25 +19,31 @@
         const type      = params.get('type');
         const videoId   = params.get('v');
         const startTime = parseInt(params.get('t')) || 0;
+        const tvId      = parseInt(params.get('tvId')) || 0;
+        const resName   = params.get('res') || 'amh-tv';
         const container = document.getElementById('player-container');
 
+        // نخبر الـ client إن الفيديو الأصلي بدأ (بعد الإعلان)
+        function notifyVideoReady() {
+            fetch(`https://cfx-nui-${resName}/videoReady`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tvId })
+            }).catch(() => {});
+        }
+
         // ─── YouTube ───────────────────────────────────────────────
-        let ytPlayer = null;
+        let ytPlayer     = null;
         let videoStarted = false;
 
         function initYouTube() {
             ytPlayer = new YT.Player('player-container', {
                 videoId,
                 playerVars: {
-                    autoplay: 1,
-                    controls: 0,
-                    mute: 1,
-                    start: startTime,
-                    rel: 0,
-                    modestbranding: 1,
-                    iv_load_policy: 3,
-                    disablekb: 1,
-                    playsinline: 1,
+                    autoplay: 1, controls: 0, mute: 1,
+                    start: startTime, rel: 0,
+                    modestbranding: 1, iv_load_policy: 3,
+                    disablekb: 1, playsinline: 1,
                 },
                 events: {
                     onReady(e) {
@@ -55,23 +52,18 @@
                         e.target.playVideo();
                     },
                     onStateChange(e) {
-                        // PLAYING = 1 — لما الفيديو الأصلي يبدأ (بعد الإعلان)
+                        // PLAYING بعد الإعلان = الفيديو الأصلي بدأ
                         if (e.data === YT.PlayerState.PLAYING && !videoStarted) {
                             videoStarted = true;
-                            // نخبر الـ client إن الفيديو الأصلي بدأ (بعد الإعلان)
-                            fetch('https://cfx-nui-amh-tv/videoReady', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ tvId: parseInt(new URLSearchParams(window.location.search).get('tvId')) || 0 })
-                            }).catch(() => {});
+                            notifyVideoReady();
                         }
                         if (e.data === YT.PlayerState.ENDED) {
                             videoStarted = false;
-                            try { e.target.seekTo(0, true); e.target.playVideo(); } catch (_) {}
+                            try { e.target.seekTo(0, true); e.target.playVideo(); } catch(_) {}
                         }
                     },
                     onError() {
-                        setTimeout(() => { try { ytPlayer.playVideo(); } catch (_) {} }, 2000);
+                        setTimeout(() => { try { ytPlayer.playVideo(); } catch(_) {} }, 2000);
                     }
                 }
             });
@@ -84,29 +76,24 @@
         // ─── Twitch ────────────────────────────────────────────────
         } else if (type === 'twitch' && videoId) {
             const tp = new Twitch.Player("player-container", {
-                channel: videoId,
-                width: "100%", height: "100%",
+                channel: videoId, width: "100%", height: "100%",
                 autoplay: true, muted: true
             });
             tp.addEventListener(Twitch.Player.READY,   () => tp.setMuted(true));
             tp.addEventListener(Twitch.Player.PLAYING,  () => tp.setMuted(true));
 
-        // ─── Kick (iframe مباشر، بدون GitHub) ─────────────────────
+        // ─── Kick ──────────────────────────────────────────────────
         } else if (type === 'kick' && videoId) {
             container.innerHTML = `
-                <iframe
-                    src="https://player.kick.com/${videoId}?autoplay=true&muted=true"
-                    allow="autoplay; fullscreen"
-                    allowfullscreen>
-                </iframe>`;
+                <iframe src="https://player.kick.com/${videoId}?autoplay=true&muted=true"
+                    allow="autoplay; fullscreen" allowfullscreen></iframe>`;
 
         // ─── Direct MP4/WebM ───────────────────────────────────────
         } else if (type === 'direct' && videoId) {
             container.innerHTML = `
                 <video src="${decodeURIComponent(videoId)}"
                     autoplay loop muted playsinline
-                    style="width:100%;height:100%;object-fit:cover">
-                </video>`;
+                    style="width:100%;height:100%;object-fit:cover"></video>`;
             const vid = container.querySelector('video');
             vid.addEventListener('loadedmetadata', () => {
                 if (vid.duration && startTime > 0)
