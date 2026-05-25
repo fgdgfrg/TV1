@@ -21,7 +21,6 @@
         const container = document.getElementById('player-container');
 
         let ytPlayer, twitchPlayer, directPlayer;
-        let currentVolume = 1.0;
 
         function initYouTube() {
             ytPlayer = new YT.Player('player-container', {
@@ -39,12 +38,6 @@
                 events: {
                     'onReady': function(event) {
                         event.target.playVideo();
-                        setTimeout(() => {
-                            if (ytPlayer && typeof ytPlayer.unMute === 'function') {
-                                ytPlayer.unMute();
-                                ytPlayer.setVolume(currentVolume * 100);
-                            }
-                        }, 1500);
                     },
                     'onStateChange': function(event) {
                         if (event.data === YT.PlayerState.PLAYING) {
@@ -75,51 +68,16 @@
                 width: "100%",
                 height: "100%",
                 autoplay: true,
-                muted: false
+                muted: true
             });
-            twitchPlayer.setVolume(currentVolume);
 
         } else if (type === 'kick' && videoId) {
-            container.innerHTML = `<iframe src="https://player.kick.com/${videoId}?autoplay=true" allow="autoplay; fullscreen"></iframe>`;
+            container.innerHTML = `<iframe src="https://player.kick.com/${videoId}?autoplay=true&muted=true" allow="autoplay; fullscreen"></iframe>`;
 
         } else if (type === 'direct' && videoId) {
-            container.innerHTML = `<video id="direct-video" src="${decodeURIComponent(videoId)}" autoplay loop></video>`;
+            container.innerHTML = `<video id="direct-video" src="${decodeURIComponent(videoId)}" autoplay loop muted></video>`;
             directPlayer = document.getElementById('direct-video');
             directPlayer.currentTime = startTime;
-            directPlayer.volume = currentVolume;
-        }
-
-        window.addEventListener('message', function(event) {
-            let data = event.data;
-            if (typeof data === 'string') {
-                try { data = JSON.parse(data); } catch(e) {}
-            }
-            if (!data || !data.type) return;
-
-            if (data.type === 'volume') {
-                currentVolume = Math.max(0, Math.min(1, data.volume));
-                applyVolume(currentVolume);
-            }
-
-            if (data.type === 'stop') {
-                if (ytPlayer && typeof ytPlayer.stopVideo === 'function') ytPlayer.stopVideo();
-                if (twitchPlayer) twitchPlayer.pause();
-                if (directPlayer) directPlayer.pause();
-                container.innerHTML = '';
-            }
-        });
-
-        function applyVolume(vol) {
-            if (type === 'youtube' && ytPlayer && typeof ytPlayer.setVolume === 'function') {
-                if (vol > 0.01) { ytPlayer.unMute(); ytPlayer.setVolume(vol * 100); }
-                else { ytPlayer.mute(); }
-            } else if (type === 'twitch' && twitchPlayer) {
-                twitchPlayer.setVolume(vol);
-                if (vol === 0) twitchPlayer.setMuted(true);
-                else twitchPlayer.setMuted(false);
-            } else if (type === 'direct' && directPlayer) {
-                directPlayer.volume = vol;
-            }
         }
     </script>
 </body>
