@@ -2,11 +2,28 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TV Player - All Platforms</title>
+    <title>TV</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-        #player-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; pointer-events: none; }
-        iframe, video { width: 100%; height: 100%; border: none; object-fit: cover; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+        #player-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        iframe, video {
+            width: 100%;
+            height: 100%;
+            border: none;
+            object-fit: cover;
+        }
     </style>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="https://player.twitch.tv/js/embed/v1.js"></script>
@@ -14,76 +31,108 @@
 <body>
     <div id="player-container"></div>
     <script>
-        const params = new URLSearchParams(window.location.search);
-        const type = params.get('type');
-        const videoId = params.get('v');
+        const params    = new URLSearchParams(window.location.search);
+        const type      = params.get('type');
+        const videoId   = params.get('v');
         const startTime = parseInt(params.get('t')) || 0;
         const container = document.getElementById('player-container');
 
-        let ytPlayer, twitchPlayer, directPlayer;
-        let currentVolume = 1.0;
+        // ══════════════════════════════════════════════
+        // كل شيء MUTED دائماً بدون استثناء
+        // الصوت يجي فقط عبر xSound من الكلايانت
+        // ══════════════════════════════════════════════
 
-        // 1. إعداد اليوتيوب
+        function forceMute(player) {
+            try { player.mute(); } catch(e) {}
+        }
+
         function initYouTube() {
-            ytPlayer = new YT.Player('player-container', {
+            const ytPlayer = new YT.Player('player-container', {
                 videoId: videoId,
                 playerVars: {
-                    'autoplay': 1, 'controls': 0, 'rel': 0, 'modestbranding': 1, 'start': startTime, 'enablejsapi': 1
+                    autoplay:        1,
+                    controls:        0,
+                    mute:            1,
+                    start:           startTime,
+                    rel:             0,
+                    modestbranding:  1,
+                    iv_load_policy:  3,
+                    disablekb:       1,
+                    playsinline:     1,
+                    origin:          window.location.origin
                 },
                 events: {
-                    'onReady': function(event) {
-                        event.target.setVolume(currentVolume * 100);
-                        event.target.playVideo();
+                    onReady(e) {
+                        e.target.mute();
+                        e.target.playVideo();
+                    },
+                    onStateChange(e) {
+                        // نضمن mute في كل حالة — حتى لو YouTube شغّل إعلان
+                        forceMute(e.target);
+
+                        if (e.data === YT.PlayerState.ENDED) {
+                            e.target.seekTo(0, true);
+                            e.target.playVideo();
+                        }
+                    },
+                    onError() {
+                        // لو في خطأ نحاول نعيد التشغيل
+                        setTimeout(() => {
+                            try { ytPlayer.playVideo(); } catch(e) {}
+                        }, 2000);
                     }
                 }
             });
         }
 
         if (type === 'youtube' && videoId) {
-            if (typeof YT !== 'undefined' && YT.Player) { initYouTube(); } 
-            else { window.onYouTubeIframeAPIReady = initYouTube; }
-            
-        // 2. إعداد تويتش
+            if (typeof YT !== 'undefined' && YT.Player) {
+                initYouTube();
+            } else {
+                window.onYouTubeIframeAPIReady = initYouTube;
+            }
+
         } else if (type === 'twitch' && videoId) {
-            twitchPlayer = new Twitch.Player("player-container", {
-                channel: videoId, width: "100%", height: "100%", autoplay: true, muted: false
+            const twitchPlayer = new Twitch.Player("player-container", {
+                channel:  videoId,
+                width:    "100%",
+                height:   "100%",
+                autoplay: true,
+                muted:    true   // مكتوم دائماً
             });
+            // نتأكد من الكتم بعد التحميل
             twitchPlayer.addEventListener(Twitch.Player.READY, () => {
-                twitchPlayer.setVolume(currentVolume);
+                twitchPlayer.setMuted(true);
+            });
+            twitchPlayer.addEventListener(Twitch.Player.PLAYING, () => {
+                twitchPlayer.setMuted(true);
             });
 
-        // 3. إعداد كيك (Kick)
         } else if (type === 'kick' && videoId) {
-            // Kick لا يمتلك API للتحكم بالصوت برمجياً حالياً، لكن بنشغله عبر الفريم
-            container.innerHTML = `<iframe id="kick-player" src="https://player.kick.com/${videoId}?autoplay=true" allow="autoplay; fullscreen"></iframe>`;
+            container.innerHTML = `
+                <iframe
+                    src="https://player.kick.com/${videoId}?autoplay=true&muted=true"
+                    allow="autoplay; fullscreen"
+                    allowfullscreen>
+                </iframe>`;
 
-        // 4. إعداد الروابط المباشرة (MP4/WebM)
         } else if (type === 'direct' && videoId) {
-            container.innerHTML = `<video id="direct-video" src="${decodeURIComponent(videoId)}" autoplay loop></video>`;
-            directPlayer = document.getElementById('direct-video');
-            directPlayer.currentTime = startTime;
-            directPlayer.volume = currentVolume;
+            container.innerHTML = `
+                <video
+                    src="${decodeURIComponent(videoId)}"
+                    autoplay
+                    loop
+                    muted
+                    playsinline
+                    style="width:100%;height:100%;object-fit:cover">
+                </video>`;
+            const vid = container.querySelector('video');
+            vid.addEventListener('loadedmetadata', () => {
+                if (vid.duration && startTime > 0) {
+                    vid.currentTime = startTime % vid.duration;
+                }
+            });
         }
-
-        // --- استقبال أمر الصوت من اللعبة (الجسر) وتطبيقه ---
-        window.addEventListener('message', function(event) {
-            let data = event.data;
-            if (typeof data === 'string') {
-                try { data = JSON.parse(data); } catch (e) {}
-            }
-            if (!data || data.type !== 'volume') return;
-
-            currentVolume = Math.max(0, Math.min(1, data.volume));
-            
-            if (type === 'youtube' && ytPlayer && typeof ytPlayer.setVolume === 'function') {
-                ytPlayer.setVolume(currentVolume * 100);
-            } else if (type === 'twitch' && twitchPlayer && typeof twitchPlayer.setVolume === 'function') {
-                twitchPlayer.setVolume(currentVolume);
-            } else if (type === 'direct' && directPlayer) {
-                directPlayer.volume = currentVolume;
-            }
-            // ملاحظة: Kick سيبقى بالصوت الافتراضي لأنه لا يدعم الـ API
-        });
     </script>
 </body>
 </html>
